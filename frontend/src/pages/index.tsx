@@ -1,5 +1,4 @@
-import React from 'react';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -24,25 +23,14 @@ ChartJS.register(
 
 interface MarketData {
   timestamp: string;
-  symbol: string;
-  vwapBid: number;
-  vwapAsk: number;
-  spread: number;
-  volumeImbalance: number;
   bidVolume: number;
   askVolume: number;
+  netVolume: number;
 }
 
 export default function Home() {
   const [data, setData] = useState<MarketData[]>([]);
-  const [activeTab, setActiveTab] = useState<'raw' | 'indicators'>('indicators');
-  const [minuteData, setMinuteData] = useState<{
-    timestamp: string;
-    bidVolume: number;
-    askVolume: number;
-    volumeImbalance: number;
-    spread: number;
-  }[]>([]);
+  const [minuteData, setMinuteData] = useState<MarketData[]>([]);
 
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080';
@@ -51,31 +39,31 @@ export default function Home() {
     ws.onmessage = (event) => {
       const newData = JSON.parse(event.data);
       setData(prev => [...prev.slice(-50), newData]);
-      
-      // 累積一分鐘的數據
-      const currentMinute = DateTime.fromISO(newData.timestamp).startOf('minute');
-      
+
+      // 計算當前分鐘
+      const now = DateTime.fromISO(newData.timestamp);
+      const minuteKey = now.startOf('minute').toISO();
+
       setMinuteData(prev => {
         const lastEntry = prev[prev.length - 1];
-        if (!lastEntry || DateTime.fromISO(lastEntry.timestamp).toMillis() !== currentMinute.toMillis()) {
-          // 新的一分鐘
-          return [...prev.slice(-50), {
-            timestamp: currentMinute.toISO(),
-            bidVolume: newData.bidVolume,
-            askVolume: newData.askVolume,
-            volumeImbalance: newData.volumeImbalance,
-            spread: newData.spread
-          }];
-        } else {
-          // 更新當前分鐘的數據
+        
+        if (lastEntry && DateTime.fromISO(lastEntry.timestamp).startOf('minute').toISO() === minuteKey) {
+          // 更新當前分鐘的累積數據
           const updatedData = [...prev.slice(0, -1), {
-            ...lastEntry,
-            bidVolume: Math.max(lastEntry.bidVolume, newData.bidVolume),
-            askVolume: Math.max(lastEntry.askVolume, newData.askVolume),
-            volumeImbalance: newData.volumeImbalance,  // 使用最新值
-            spread: newData.spread  // 使用最新值
+            timestamp: minuteKey,
+            bidVolume: lastEntry.bidVolume + newData.bidVolume,
+            askVolume: lastEntry.askVolume + newData.askVolume,
+            netVolume: (lastEntry.askVolume + newData.askVolume) - (lastEntry.bidVolume + newData.bidVolume)
           }];
           return updatedData;
+        } else {
+          // 新的一分鐘
+          return [...prev.slice(-19), {
+            timestamp: minuteKey,
+            bidVolume: newData.bidVolume,
+            askVolume: newData.askVolume,
+            netVolume: newData.askVolume - newData.bidVolume
+          }];
         }
       });
     };
@@ -87,141 +75,78 @@ export default function Home() {
     labels: minuteData.map(d => DateTime.fromISO(d.timestamp).toFormat('HH:mm')),
     datasets: [
       {
-        label: 'Volume Imbalance %',
-        data: minuteData.map(d => d.volumeImbalance),
-        backgroundColor: minuteData.map(d => 
-          d.volumeImbalance > 0 ? 'rgba(75, 192, 192, 0.5)' : 'rgba(255, 99, 132, 0.5)'
-        ),
-        borderColor: minuteData.map(d => 
-          d.volumeImbalance > 0 ? 'rgb(75, 192, 192)' : 'rgb(255, 99, 132)'
-        ),
+        label: 'Net Volume (1分鐘)',
+        data: minuteData.map(d => d.netVolume),
+        backgroundColor: (context) => {
+          const value = context.raw as number;
+          return value >= 0 ? 'rgba(255, 99, 132, 0.5)' : 'rgba(75, 192, 192, 0.5)';
+        },
+        borderColor: (context) => {
+          const value = context.raw as number;
+          return value >= 0 ? 'rgb(255, 99, 132)' : 'rgb(75, 192, 192)';
+        },
         borderWidth: 1
       }
     ]
   };
 
-  const rawChartData = {
-    labels: minuteData.map(d => DateTime.fromISO(d.timestamp).toFormat('HH:mm')),
-    datasets: [
-      {
-        label: 'Bid Volume',
-        data: minuteData.map(d => d.bidVolume),
-        backgroundColor: 'rgba(75, 192, 192, 0.5)',
-        borderColor: 'rgb(75, 192, 192)',
-        borderWidth: 1
-      },
-      {
-        label: 'Ask Volume',
-        data: minuteData.map(d => d.askVolume),
-        backgroundColor: 'rgba(255, 99, 132, 0.5)',
-        borderColor: 'rgb(255, 99, 132)',
-        borderWidth: 1
-      }
-    ]
-  };
+  const latestData = data[data.length - 1];
 
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Market Depth Monitor</h1>
-      
-      {/* 頁籤 */}
-      <div className="flex mb-4">
-        <button
-          className={`px-4 py-2 mr-2 rounded ${
-            activeTab === 'indicators' ? 'bg-blue-500 text-white' : 'bg-gray-200'
-          }`}
-          onClick={() => setActiveTab('indicators')}
-        >
-          Indicators
-        </button>
-        <button
-          className={`px-4 py-2 rounded ${
-            activeTab === 'raw' ? 'bg-blue-500 text-white' : 'bg-gray-200'
-          }`}
-          onClick={() => setActiveTab('raw')}
-        >
-          Raw Data
-        </button>
+
+      {/* 即時指標 */}
+      <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="p-4 bg-gray-100 rounded">
+          <h2>Net Volume</h2>
+          <p className={`text-2xl ${
+            latestData?.netVolume > 0 ? 'text-red-500' : 'text-green-500'
+          }`}>
+            ${Math.abs(latestData?.netVolume || 0).toFixed(2)}M
+          </p>
+        </div>
+        
+        <div className="p-4 bg-gray-100 rounded">
+          <h2>Bid Volume</h2>
+          <p className="text-2xl text-gray-700">
+            ${latestData?.bidVolume.toFixed(2)}M
+          </p>
+        </div>
+        
+        <div className="p-4 bg-gray-100 rounded">
+          <h2>Ask Volume</h2>
+          <p className="text-2xl text-gray-700">
+            ${latestData?.askVolume.toFixed(2)}M
+          </p>
+        </div>
       </div>
 
-      {activeTab === 'indicators' ? (
-        <>
-          {/* 即時指標 */}
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            <div className="p-4 bg-gray-100 rounded">
-              <h2>Volume Imbalance</h2>
-              <p className={`text-2xl ${
-                data[data.length-1]?.volumeImbalance > 50 ? 'text-green-500' :
-                data[data.length-1]?.volumeImbalance < -50 ? 'text-red-500' :
-                'text-gray-700'
-              }`}>
-                {data[data.length-1]?.volumeImbalance.toFixed(2)}%
-              </p>
-            </div>
-            
-            <div className="p-4 bg-gray-100 rounded">
-              <h2>Spread</h2>
-              <p className={`text-2xl ${
-                data[data.length-1]?.spread > 0.1 ? 'text-yellow-500' : 'text-gray-700'
-              }`}>
-                {data[data.length-1]?.spread.toFixed(3)}%
-              </p>
-            </div>
-            
-            <div className="p-4 bg-gray-100 rounded">
-              <h2>VWAP</h2>
-              <p className="text-2xl text-gray-700">
-                ${data[data.length-1]?.vwapBid.toFixed(2)} - ${data[data.length-1]?.vwapAsk.toFixed(2)}
-              </p>
-            </div>
-          </div>
-
-          {/* 圖表 */}
-          <div className="h-96">
-            <Bar data={chartData} options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                y: {
-                  beginAtZero: true
-                }
+      {/* 圖表 */}
+      <div className="h-96">
+        <Bar data={chartData} options={{
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              grid: {
+                color: 'rgba(0, 0, 0, 0.1)',
               }
-            }} />
-          </div>
-        </>
-      ) : (
-        <>
-          {/* 原始數據 */}
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <div className="p-4 bg-gray-100 rounded">
-              <h2>Bid Volume</h2>
-              <p className="text-2xl text-gray-700">
-                ${data[data.length-1]?.bidVolume.toFixed(2)}M
-              </p>
-            </div>
-            
-            <div className="p-4 bg-gray-100 rounded">
-              <h2>Ask Volume</h2>
-              <p className="text-2xl text-gray-700">
-                ${data[data.length-1]?.askVolume.toFixed(2)}M
-              </p>
-            </div>
-          </div>
-
-          {/* 原始數據圖表 */}
-          <div className="h-96">
-            <Bar data={rawChartData} options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                y: {
-                  beginAtZero: true
-                }
+            },
+            x: {
+              grid: {
+                display: false
               }
-            }} />
-          </div>
-        </>
-      )}
+            }
+          },
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top' as const
+            }
+          }
+        }} />
+      </div>
     </div>
   );
 } 
