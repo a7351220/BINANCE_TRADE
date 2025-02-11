@@ -33,42 +33,68 @@ export default function Home() {
   const [minuteData, setMinuteData] = useState<MarketData[]>([]);
 
   useEffect(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080';
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
+    console.log('Attempting to connect to WebSocket:', wsUrl);
+    
     const ws = new WebSocket(wsUrl);
 
-    ws.onmessage = (event) => {
-      const newData = JSON.parse(event.data);
-      setData(prev => [...prev.slice(-50), newData]);
+    ws.onopen = () => {
+      console.log('✅ WebSocket connection established');
+    };
 
-      // 計算當前分鐘
-      const now = DateTime.fromISO(newData.timestamp);
-      const minuteKey = now.startOf('minute').toISO();
+    ws.onerror = (error) => {
+      console.error('❌ WebSocket error:', error);
+    };
 
-      setMinuteData(prev => {
-        const lastEntry = prev[prev.length - 1];
-        
-        if (lastEntry && DateTime.fromISO(lastEntry.timestamp).startOf('minute').toISO() === minuteKey) {
-          // 更新當前分鐘的累積數據
-          const updatedData = [...prev.slice(0, -1), {
-            timestamp: minuteKey,
-            bidVolume: lastEntry.bidVolume + newData.bidVolume,
-            askVolume: lastEntry.askVolume + newData.askVolume,
-            netVolume: (lastEntry.askVolume + newData.askVolume) - (lastEntry.bidVolume + newData.bidVolume)
-          }];
-          return updatedData;
-        } else {
-          // 新的一分鐘
-          return [...prev.slice(-19), {
-            timestamp: minuteKey,
-            bidVolume: newData.bidVolume,
-            askVolume: newData.askVolume,
-            netVolume: newData.askVolume - newData.bidVolume
-          }];
-        }
+    ws.onclose = (event) => {
+      console.log('🔴 WebSocket connection closed:', {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean
       });
     };
 
-    return () => ws.close();
+    ws.onmessage = (event) => {
+      try {
+        console.log('📨 Received data:', event.data.slice(0, 100) + '...'); // 只顯示前100個字符
+        const newData = JSON.parse(event.data);
+        setData(prev => [...prev.slice(-50), newData]);
+
+        // 計算當前分鐘
+        const now = DateTime.fromISO(newData.timestamp);
+        const minuteKey = now.startOf('minute').toISO();
+
+        setMinuteData(prev => {
+          const lastEntry = prev[prev.length - 1];
+          
+          if (lastEntry && DateTime.fromISO(lastEntry.timestamp).startOf('minute').toISO() === minuteKey) {
+            // 更新當前分鐘的累積數據
+            const updatedData = [...prev.slice(0, -1), {
+              timestamp: minuteKey,
+              bidVolume: lastEntry.bidVolume + newData.bidVolume,
+              askVolume: lastEntry.askVolume + newData.askVolume,
+              netVolume: (lastEntry.askVolume + newData.askVolume) - (lastEntry.bidVolume + newData.bidVolume)
+            }];
+            return updatedData;
+          } else {
+            // 新的一分鐘
+            return [...prev.slice(-19), {
+              timestamp: minuteKey,
+              bidVolume: newData.bidVolume,
+              askVolume: newData.askVolume,
+              netVolume: newData.askVolume - newData.bidVolume
+            }];
+          }
+        });
+      } catch (error) {
+        console.error('❌ Error processing message:', error);
+      }
+    };
+
+    return () => {
+      console.log('🔄 Cleaning up WebSocket connection');
+      ws.close();
+    };
   }, []);
 
   const chartData = {

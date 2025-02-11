@@ -1,4 +1,4 @@
 import './data_streams/binance/orders';
-import './websocket/server';
+import './server';
 
 console.log('🚀 Server started'); 
