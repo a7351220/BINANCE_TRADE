@@ -9,7 +9,7 @@ export interface CsvColumn {
 export const defaultColumns: CsvColumn[] = [
     {
         header: 'Timestamp',
-        value: (indicator) => DateTime.fromMillis(indicator.timestamp)
+        value: (indicator) => DateTime.fromMillis(parseInt(indicator.timestamp))
             .toFormat("yyyy-MM-dd HH:mm:ss.SSS")
     },
     {
@@ -33,8 +33,8 @@ function getIndicatorValue(indicator: IndicatorResult, header: string): string {
     };
 
     const valueName = valueMap[header];
-    if (valueName && indicator.values[valueName] !== undefined) {
-        return indicator.values[valueName].toString();
+    if (valueName && indicator.values[valueName as keyof typeof indicator.values] !== undefined) {
+        return indicator.values[valueName as keyof typeof indicator.values].toString();
     }
     return '';
 }

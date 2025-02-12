@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.13.1-pg14
+    platform: linux/arm64
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=market_data
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+
+volumes:
+  timescaledb_data:

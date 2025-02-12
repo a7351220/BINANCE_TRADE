@@ -2,15 +2,21 @@ import { Chalk } from 'chalk';
 
 export interface MarketData {
     symbol: string;
-    timestamp: number;
-    bids: [number, number][];  // [price, quantity][]
-    asks: [number, number][];
+    timestamp: string;
+    price: number;
+    bidVolume: number;
+    askVolume: number;
+    netVolume: number;
 }
 
 export interface IndicatorResult {
     symbol: string;
-    timestamp: number;
-    values: Record<string, number>;
+    timestamp: string;
+    values: {
+        bidVolume: number;
+        askVolume: number;
+        netVolume: number;
+    };
     display: {
         color: Chalk;
         emoji: string;

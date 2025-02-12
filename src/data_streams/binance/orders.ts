@@ -1,168 +1,123 @@
 import WebSocket from 'ws';
 import dotenv from 'dotenv';
-import fs from 'fs';
-import { config } from '../../dumps/config';
-import { analyzeVWAP } from './indicators/vwap';
-import { analyzeVolume } from './indicators/volume';
-import { MarketData, IndicatorResult } from './indicators/types';
-import { formatConsoleOutput } from './display/console';
-import { formatCsvHeader, formatCsvLine, defaultColumns } from './display/csv';
 import { EventEmitter } from 'events';
 
 dotenv.config();
 
-const wsBinanceFstream = process.env.WS_BINANACE_FSTREAM;
 const wsBinanceSpot = process.env.WS_BINANACE_SPOT;
-
-if (!wsBinanceFstream) {
-    throw new Error('WS_BINANACE_FSTREAM environment variable is not set');
-}
 
 if (!wsBinanceSpot) {
     throw new Error('WS_BINANACE_SPOT environment variable is not set');
 }
 
-const dumpDir = 'dumps';
-if (!fs.existsSync(dumpDir)) {
-    fs.mkdirSync(dumpDir, { recursive: true });
-}
-
-// 定義 CSV 列
-const csvColumns = [
-    ...defaultColumns,
-    {
-        header: 'VWAP Bid USD',
-        value: (indicator: IndicatorResult) => indicator.values.vwapBid.toString()
-    },
-    {
-        header: 'VWAP Ask USD',
-        value: (indicator: IndicatorResult) => indicator.values.vwapAsk.toString()
-    },
-    {
-        header: 'Spread %',
-        value: (indicator: IndicatorResult) => indicator.values.spreadPct.toString()
-    },
-    {
-        header: 'Bid Volume USD',
-        value: (indicator: IndicatorResult) => indicator.values.bidVolume.toString()
-    },
-    {
-        header: 'Ask Volume USD',
-        value: (indicator: IndicatorResult) => indicator.values.askVolume.toString()
-    }
-];
-
-// 初始化 CSV 文件
-if (!fs.existsSync(config.data_streams.dump_file_name)) {
-    fs.writeFileSync(config.data_streams.dump_file_name, formatCsvHeader(csvColumns));
-}
-
-interface OrderbookState {
-    [symbol: string]: {
-        bids: Map<number, number>;  // price -> quantity
-        asks: Map<number, number>;
-    }
-}
-
-const orderbooks: OrderbookState = {};
-
 export const eventEmitter = new EventEmitter();
 
+const orderbooks: {
+    [symbol: string]: {
+        price: number;
+        bids: Map<number, number>;
+        asks: Map<number, number>;
+    }
+} = {};
+
+// 添加配置常量
+const PRICE_RANGE_PERCENTAGE = 0.01; // 1% range from current price
+
 async function binanceTradeStream() {
-    const ws = new WebSocket(wsBinanceSpot || '');
+    const ws = new WebSocket(wsBinanceSpot as string);
 
     const subscriptionMessage = {
         method: 'SUBSCRIBE',
-        params: config.data_streams.pairs.map(pair => `${pair}usdt@depth`) || ['btcusdt@depth'],
+        params: [
+            'btcusdt@depth',    // 深度數據
+            'btcusdt@trade'     // 價格數據
+        ],
         id: 1,
     };
 
     ws.on('open', () => {
         console.log('WebSocket connected');
         ws.send(JSON.stringify(subscriptionMessage));
-        console.log('Subscription message sent');
     });
 
     ws.on('message', (data: WebSocket.Data) => {
         try {
             const update = JSON.parse(data.toString());
-
-            // Handle subscription confirmation
-            if ("result" in update && update.result === null) {
-                console.log("✅ Subscription successful");
-                return;
-            }
-
-            // Skip if not a valid update
-            if (!update.s || !update.b || !update.a || !update.E) {
-                return;
-            }
+            
+            if (!update.s) return;
             
             const symbol = update.s;
 
-            // Initialize orderbook if not exists
             if (!orderbooks[symbol]) {
                 orderbooks[symbol] = {
+                    price: 0,
                     bids: new Map(),
                     asks: new Map()
                 };
             }
 
-            // Update bids
-            update.b.forEach(([price, quantity]: [string, string]) => {
-                const priceNum = parseFloat(price);
-                const qtyNum = parseFloat(quantity);
-                
-                if (qtyNum === 0) {
-                    orderbooks[symbol].bids.delete(priceNum);
-                } else {
-                    orderbooks[symbol].bids.set(priceNum, qtyNum);
-                }
-            });
+            // 處理價格更新
+            if (update.e === 'trade') {
+                orderbooks[symbol].price = parseFloat(update.p);
+                return;
+            }
 
-            // Update asks
-            update.a.forEach(([price, quantity]: [string, string]) => {
-                const priceNum = parseFloat(price);
-                const qtyNum = parseFloat(quantity);
-                
-                if (qtyNum === 0) {
-                    orderbooks[symbol].asks.delete(priceNum);
-                } else {
-                    orderbooks[symbol].asks.set(priceNum, qtyNum);
-                }
-            });
+            // 處理深度更新
+            if (update.b && update.a) {
+                // 更新 bids
+                update.b.forEach(([price, quantity]: [string, string]) => {
+                    const priceNum = parseFloat(price);
+                    const qtyNum = parseFloat(quantity);
+                    
+                    if (qtyNum === 0) {
+                        orderbooks[symbol].bids.delete(priceNum);
+                    } else {
+                        orderbooks[symbol].bids.set(priceNum, qtyNum);
+                    }
+                });
 
-            // Convert current orderbook state to MarketData
-            const marketData: MarketData = {
-                symbol: symbol,
-                timestamp: update.E,
-                bids: Array.from(orderbooks[symbol].bids.entries())
-                    .sort((a, b) => b[0] - a[0]), // sort by price descending
-                asks: Array.from(orderbooks[symbol].asks.entries())
-                    .sort((a, b) => a[0] - b[0])  // sort by price ascending
-            };
+                // 更新 asks
+                update.a.forEach(([price, quantity]: [string, string]) => {
+                    const priceNum = parseFloat(price);
+                    const qtyNum = parseFloat(quantity);
+                    
+                    if (qtyNum === 0) {
+                        orderbooks[symbol].asks.delete(priceNum);
+                    } else {
+                        orderbooks[symbol].asks.set(priceNum, qtyNum);
+                    }
+                });
 
-            // Calculate indicators
-            const vwapResult = analyzeVWAP(marketData);
-            const volumeResult = analyzeVolume(marketData);
-            const indicators = [volumeResult, vwapResult];
+                // 獲取價格範圍
+                const upperPriceRange = orderbooks[symbol].price * (1 + PRICE_RANGE_PERCENTAGE);
+                const lowerPriceRange = orderbooks[symbol].price * (1 - PRICE_RANGE_PERCENTAGE);
 
-            // Display results
-            const output = formatConsoleOutput(
-                marketData.timestamp,
-                marketData.symbol,
-                indicators
-            );
-            console.log(output);
+                // 計算範圍內的 volume
+                const bidVolume = Array.from(orderbooks[symbol].bids.entries())
+                    .filter(([price, _]) => price >= lowerPriceRange)
+                    .reduce((sum, [_, qty]) => sum + (orderbooks[symbol].price * qty), 0);
 
-            // Log to CSV
-            fs.appendFileSync(
-                config.data_streams.dump_file_name,
-                formatCsvLine(indicators, csvColumns)
-            );
+                const askVolume = Array.from(orderbooks[symbol].asks.entries())
+                    .filter(([price, _]) => price <= upperPriceRange)
+                    .reduce((sum, [_, qty]) => sum + (orderbooks[symbol].price * qty), 0);
 
-            eventEmitter.emit('newIndicatorData', indicators);  // 發射事件
+                const netVolume = askVolume - bidVolume;
 
+                const data = {
+                    timestamp: new Date(update.E).toISOString(),
+                    price: orderbooks[symbol].price,
+                    bidVolume,
+                    askVolume,
+                    netVolume
+                };
+
+                console.log(`${symbol} ${new Date(update.E).toLocaleTimeString()} | ` +
+                    `Price: $${data.price.toFixed(2)} | ` +
+                    `Net Vol: ${netVolume > 0 ? '+' : ''}${formatBackendVolume(netVolume)} | ` +
+                    `B:${formatBackendVolume(bidVolume)} A:${formatBackendVolume(askVolume)}`);
+
+                eventEmitter.emit('newIndicatorData', data);
+            }
         } catch (error) {
             console.error('Error processing message:', error);
         }
@@ -174,13 +129,16 @@ async function binanceTradeStream() {
 
     ws.on('close', () => {
         console.log('WebSocket connection closed');
-        // 重新連接
-        setTimeout(() => {
-            console.log('Attempting to reconnect...');
-            binanceTradeStream();
-        }, 5000);
+        setTimeout(binanceTradeStream, 5000);
     });
 }
 
-// 啟動 WebSocket
 binanceTradeStream().catch(console.error);
+
+// 添加格式化函數
+function formatBackendVolume(volume: number): string {
+    if (Math.abs(volume) >= 1000000) {
+        return `$${(volume / 1000000).toFixed(2)}M`;
+    }
+    return `$${(volume / 1000).toFixed(2)}K`;
+}

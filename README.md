@@ -1,87 +1,162 @@
 # Crypto Market Depth Monitor
 
-這個工具通過分析幣安訂單簿數據，提供即時的市場深度和交易壓力指標。
+A real-time market depth analysis tool for Binance order book data.
 
-## 項目結構
+## Data Source
 
-## 數據來源
+- **Binance WebSocket API**: 
+  - Order book stream: `btcusdt@depth`
+  - Trade stream: `btcusdt@trade`
+- Real-time updates with no delay
+
+## Core Metrics
+
+### 1. Volume Analysis
+- **Bid Volume**: Sum of buy orders within 1% of current price
+- **Ask Volume**: Sum of sell orders within 1% of current price
+- **Net Volume**: Ask Volume - Bid Volume
+- **Units**: Auto-formatted in K/M based on size
+  - K = Thousands (e.g., $100K)
+  - M = Millions (e.g., $1.5M)
+
+### 2. Anomaly Detection
+- **Method**: Statistical analysis using:
+  - Moving Average as baseline
+  - Standard Deviation for variance
+  - 2σ (two sigma) rule for anomaly flagging
+- **Indicators**:
+  - Red alerts for volumes exceeding 2 standard deviations
+  - Real-time monitoring and notification
+  - Historical anomaly tracking
+
+### 3. Market Statistics
+- **Total Volume**: Cumulative trading volume
+- **Mean Volume**: Average volume per update
+- **Standard Deviation**: Market volatility measure
+- **Anomaly Count**: Number of detected anomalies
+
+## Data Visualization
+
+### Real-time Charts
+- Price movement tracking
+- Volume analysis with anomaly highlighting
+- Moving average overlay
+
+### Market Data Table
+- Time-stamped entries
+- Bid/Ask volume comparison
+- Net volume calculation
+- Anomaly status indication
+
+## Data Export
+- CSV format export
+- Includes timestamp, volumes, and price data
+- Suitable for further analysis
+
+## Technical Notes
+
+- All amounts in USD
+- Automatic unit conversion (K/M)
+- Real-time calculation and updates
+- 1% price range for order book depth analysis
+
+## Usage Tips
+
+1. **Volume Analysis**:
+   - Watch for significant imbalances between bid/ask volumes
+   - Monitor net volume trends
+   - Note sudden volume spikes
+
+2. **Anomaly Alerts**:
+   - Red indicators show potential market volatility
+   - Compare with historical patterns
+   - Consider multiple timeframes
+
+3. **Market Depth**:
+   - Focus on orders within 1% of current price
+   - Track volume distribution
+   - Monitor order book imbalances
+
+## Project Structure
+
+## Data Source Details
 
 - **Binance WebSocket API**: `<symbol>usdt@depth`
 - 使用 Top 10% 的訂單簿深度來計算指標
 - 實時更新，無延遲
 
-## 核心指標說明
+## Core Metrics Description
 
 ### 1. VWAP (Volume-Weighted Average Price)
-- **定義**: 成交量加權平均價格
-- **計算**: Σ(價格 × 數量) / Σ(數量)
-- **意義**: 
+- **Definition**: 成交量加權平均價格
+- **Calculation**: Σ(價格 × 數量) / Σ(數量)
+- **Meaning**: 
   - 比單純的市場價格更能反映真實交易價值
   - 考慮了訂單量的權重
   - 分別計算買方(Bid)和賣方(Ask)的VWAP
 
 ### 2. Spread (價差)
-- **計算**: ((賣方VWAP - 買方VWAP) / 買方VWAP) × 100%
-- **警戒值**: > 0.1% 顯示黃色警告 ⚠️
-- **意義**:
-  - 反映市場流動性
-  - 價差過大表示流動性不足
-  - 正常市場價差應該較小
+- **Calculation**: ((賣方VWAP - 買方VWAP) / 買方VWAP) × 100%
+- **Warning Value**: > 0.1% shows yellow warning ⚠️
+- **Meaning**:
+  - Reflects market liquidity
+  - Large spread indicates low liquidity
+  - Normal market spread should be small
 
 ### 3. Volume Imbalance (量能差異)
-- **計算**: ((買方量 - 賣方量) / (買方量 + 賣方量)) × 100%
-- **顯示**:
-  - 強買壓 (>50%): 🚀 綠色
-  - 強賣壓 (<-50%): 📉 紅色
-  - 平衡 (-50%~50%): 📊 白色
-- **意義**:
-  - 反映市場短期走向
-  - 量能差異過大可能預示價格變動
+- **Calculation**: ((買方量 - 賣方量) / (買方量 + 賣方量)) × 100%
+- **Display**:
+  - Strong buy pressure (>50%): 🚀 Green
+  - Strong sell pressure (<-50%): �� Red
+  - Balance (-50%~50%): 📊 White
+- **Meaning**:
+  - Reflects market short-term trend
+  - Large volume imbalance may indicate price movement
 
-## 如何解讀數據
+## Data Interpretation
 
-### 示例輸出 
+### Example Output 
 
 🚀 BTC 2024-03-14 15:30:45 | Spread: 0.050% | Vol Imb: 25.5% | $67245.50 - $67278.80 | B:$2.5M A:$1.8M
 
-### 市場狀態判斷
+### Market State Judgment
 
-1. **強勢做多信號**:
-   - 🚀 綠色顯示
+1. **Strong Buy Signal**:
+   - 🚀 Green display
    - Volume Imbalance > 50%
-   - 較小的 Spread
-   - 買方量明顯大於賣方量
+   - Small Spread
+   - Buy volume significantly greater than sell volume
 
-2. **強勢做空信號**:
-   - 📉 紅色顯示
+2. **Strong Sell Signal**:
+   - 📉 Red display
    - Volume Imbalance < -50%
-   - 較小的 Spread
-   - 賣方量明顯大於買方量
+   - Small Spread
+   - Sell volume significantly greater than buy volume
 
-3. **市場異常警告**:
-   - ⚠️ 黃色顯示
+3. **Market Anomaly Warning**:
+   - ⚠️ Yellow display
    - Spread > 0.1%
-   - 表示流動性不足，交易需謹慎
+   - Indicates low liquidity, trade cautiously
 
-4. **正常市場狀態**:
-   - 📊 白色顯示
-   - 適中的 Volume Imbalance
-   - 小的 Spread
-   - 買賣量相對平衡
+4. **Normal Market State**:
+   - 📊 White display
+   - Moderate Volume Imbalance
+   - Small Spread
+   - Buy and sell volumes relatively balanced
 
-## 數據記錄
+## Data Recording
 
-所有數據都會被記錄到 CSV 文件中，包含：
-- 時間戳
-- 交易對
-- 買賣方 VWAP
-- Spread 百分比
-- 買賣方交易量 (USD)
+All data will be recorded to CSV files, including:
+- Timestamp
+- Trading pair
+- Buy/Sell VWAP
+- Spread percentage
+- Buy/Sell trading volume (USD)
 
-## 注意事項
+## Notes
 
-- 所有金額都以 USD 計價
-- 大額數字使用 K(千)/M(百萬)/B(十億) 表示
-- 量能差異和價差是即時計算，反映當前市場狀態
-- 建議同時觀察多個時間點的數據來判斷趨勢
+- All amounts are priced in USD
+- Large numbers use K(thousand)/M(million)/B(billion) format
+- Volume imbalance and spread are calculated in real-time, reflecting current market state
+- It's recommended to observe data from multiple time points to judge trends
 

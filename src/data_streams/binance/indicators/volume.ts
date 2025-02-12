@@ -1,30 +1,24 @@
 import { MarketData, IndicatorResult } from './types';
 import chalk from 'chalk';
 
-function formatUSD(value: number): string {
+export function formatVolume(value: number): string {
     if (value >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
     if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
     if (value >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
     return value.toFixed(0);
 }
 
-export function analyzeVolume(data: MarketData): IndicatorResult {
-    const bidVolume = data.bids.reduce((sum, [price, qty]) => sum + (price * qty), 0);
-    const askVolume = data.asks.reduce((sum, [price, qty]) => sum + (price * qty), 0);
-    const volumeImbalance = ((bidVolume - askVolume) / (bidVolume + askVolume)) * 100;
+export function formatMarketData(data: MarketData): string {
+    return `${data.symbol} ${new Date(data.timestamp).toLocaleTimeString()} | ` +
+        `Price: $${data.price.toFixed(2)} | ` +
+        `Net Vol: ${data.netVolume > 0 ? '+' : ''}${formatVolume(data.netVolume)}M | ` +
+        `B:$${formatVolume(data.bidVolume)}M A:$${formatVolume(data.askVolume)}M`;
+}
 
-    let color = chalk.white;
-    let emoji = '📊';
-    
-    if (Math.abs(volumeImbalance) > 50) {
-        if (volumeImbalance > 0) {
-            color = chalk.green;
-            emoji = '🚀';
-        } else {
-            color = chalk.red;
-            emoji = '📉';
-        }
-    }
+export function analyzeVolume(data: MarketData): IndicatorResult {
+    const bidVolume = data.bidVolume;
+    const askVolume = data.askVolume;
+    const netVolume = askVolume - bidVolume;
 
     return {
         symbol: data.symbol,
@@ -32,12 +26,12 @@ export function analyzeVolume(data: MarketData): IndicatorResult {
         values: {
             bidVolume,
             askVolume,
-            volumeImbalance
+            netVolume
         },
         display: {
-            color,
-            emoji,
-            text: `Vol Imb: ${volumeImbalance.toFixed(1)}% | B:$${formatUSD(bidVolume)} A:$${formatUSD(askVolume)}`
+            color: chalk.white,
+            emoji: '📊',
+            text: `B:$${formatVolume(bidVolume)} A:$${formatVolume(askVolume)}`
         }
     };
 } 
