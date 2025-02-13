@@ -87,6 +87,11 @@ export default function History() {
     a.click();
   };
 
+  const maxPage = Math.ceil(allData.length / itemsPerPage);
+  if (currentPage > maxPage) {
+    setCurrentPage(maxPage);
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-gray-100 font-mono overflow-x-hidden">
       {/* 手機版頂部欄 */}

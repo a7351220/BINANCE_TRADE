@@ -56,7 +56,7 @@ export default function Home() {
   const currentTransactions = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     const end = start + itemsPerPage;
-    return data.slice(start, end);
+    return [...data].reverse().slice(start, end);
   }, [data, currentPage]);
 
   // 下載數據
@@ -97,15 +97,8 @@ export default function Home() {
     const ws = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws');
     
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      const formattedData: MarketData = {
-        timestamp: data.timestamp,
-        price: Number(data.price),
-        bidVolume: Number(data.bidVolume),
-        askVolume: Number(data.askVolume),
-        netVolume: Number(data.netVolume)
-      };
-      addData(formattedData);
+      const newData = JSON.parse(event.data);
+      addData(newData);
     };
 
     return () => {
