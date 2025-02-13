@@ -35,7 +35,6 @@ export default function History() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      console.log('Original input time:', timeRange);
       
       const fromDate = DateTime.fromFormat(timeRange.from, "yyyy-MM-dd'T'HH:mm", { zone: 'Asia/Taipei' })
         .toUTC()
@@ -43,9 +42,7 @@ export default function History() {
       const toDate = DateTime.fromFormat(timeRange.to, "yyyy-MM-dd'T'HH:mm", { zone: 'Asia/Taipei' })
         .toUTC()
         .toISO();
-      
-      console.log('Converted to UTC:', { fromDate, toDate });
-      
+            
       const params = new URLSearchParams();
       if (fromDate) params.append('from', fromDate);
       if (toDate) params.append('to', toDate);
