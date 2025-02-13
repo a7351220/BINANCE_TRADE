@@ -1,18 +1,13 @@
 import { DateTime } from 'luxon';
 import { formatVolume } from '../utils/formatters';
+import { MarketData } from '../types/market';
 
 interface DataTableProps {
-  data: Array<{
-    timestamp: string;
-    bidVolume: number;
-    askVolume: number;
-    netVolume: number;
-    price: number;
-  }>;
-  anomalies: number[];
+  data: MarketData[];
+  anomalies?: number[];
 }
 
-export const DataTable = ({ data, anomalies }: DataTableProps) => (
+export const DataTable = ({ data, anomalies = [] }: DataTableProps) => (
   <table className="w-full text-sm">
     <thead className="bg-[#1a1a25]">
       <tr>
@@ -25,9 +20,10 @@ export const DataTable = ({ data, anomalies }: DataTableProps) => (
       </tr>
     </thead>
     <tbody>
-      {data.slice(-10).reverse().map((d, i) => {
-        const actualIndex = data.length - 10 + (9 - i);
-        const isAnomaly = anomalies.includes(actualIndex);
+      {data.map((d, i) => {
+        const isAnomaly = anomalies.includes(i);
+        const localTime = DateTime.fromISO(d.timestamp).toFormat('HH:mm:ss');
+
         return (
           <tr
             key={d.timestamp}
@@ -35,9 +31,7 @@ export const DataTable = ({ data, anomalies }: DataTableProps) => (
               ${isAnomaly ? 'bg-red-900/20 hover:bg-red-900/30' : 'hover:bg-[#1a1a25]'} border-b border-[#1a1a25]
             `}
           >
-            <td className="p-3 text-gray-300">
-              {DateTime.fromISO(d.timestamp).toFormat('HH:mm:ss')}
-            </td>
+            <td className="p-3 text-gray-300">{localTime}</td>
             <td className="p-3 text-right text-yellow-500">
               ${d.price.toFixed(2)}
             </td>

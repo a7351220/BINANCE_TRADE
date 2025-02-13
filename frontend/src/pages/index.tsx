@@ -48,7 +48,17 @@ const commonXAxisConfig = {
 export default function Home() {
   const [currentTime, setCurrentTime] = useState('');
   const { data, stats, anomalies, addData } = useMarketStore();
-  
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  const [mounted, setMounted] = useState(false);
+
+  // 計算當前頁的數據
+  const currentTransactions = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    return data.slice(start, end);
+  }, [data, currentPage]);
+
   // 下載數據
   const downloadData = () => {
     const headers = ['Timestamp', 'Bid Volume', 'Ask Volume', 'Net Volume'];
@@ -72,6 +82,7 @@ export default function Home() {
 
   // 更新當前時間
   useEffect(() => {
+    setMounted(true);
     const updateTime = () => {
       setCurrentTime(DateTime.now().toFormat('yyyy-MM-dd HH:mm:ss'));
     };
@@ -86,8 +97,15 @@ export default function Home() {
     const ws = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws');
     
     ws.onmessage = (event) => {
-      const newData = JSON.parse(event.data);
-      addData(newData);
+      const data = JSON.parse(event.data);
+      const formattedData: MarketData = {
+        timestamp: data.timestamp,
+        price: Number(data.price),
+        bidVolume: Number(data.bidVolume),
+        askVolume: Number(data.askVolume),
+        netVolume: Number(data.netVolume)
+      };
+      addData(formattedData);
     };
 
     return () => {
@@ -95,36 +113,62 @@ export default function Home() {
     };
   }, [addData]);
 
+  // 避免服務器端渲染時顯示時間
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0f] text-gray-100">
+        <div className="max-w-7xl mx-auto p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl text-cyan-400">Real-time Market Data</h1>
+          </div>
+          {/* 顯示加載中狀態 */}
+          <div className="animate-pulse">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-gray-100 font-mono overflow-x-hidden">
+    <div className="min-h-screen bg-[#0a0a0f] text-gray-100">
       {/* 手機版頂部欄 */}
       <div className="md:hidden fixed top-0 left-0 right-0 bg-[#12121a] border-b border-[#2a2a3a] p-2 z-10">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <div className="h-3 w-3 bg-cyan-500 rounded-full animate-pulse shadow-lg shadow-cyan-500/50"></div>
-            <span className="text-sm text-cyan-400">MONITOR</span>
+            <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+            <span className="text-cyan-400 text-sm">MONITOR</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-xs">
-              <span className="text-gray-400">TIME:</span>
-              <span className="text-cyan-300 ml-1">{DateTime.now().toFormat('HH:mm')}</span>
-            </div>
-            <div className="text-xs">
-              <span className="text-gray-400">STATUS:</span>
-              <span className="text-green-400 ml-1">ON</span>
-            </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.location.href = '/history'}
+              className="p-2 bg-cyan-900/20 rounded hover:bg-cyan-900/30"
+              aria-label="View Historical Data"
+            >
+              <span className="text-cyan-400 text-xl">📊</span>
+            </button>
+            <span className="text-gray-400 text-sm">
+              {DateTime.now().toFormat('HH:mm')}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* 左側邊欄 - 桌面版 */}
+      {/* 桌面版側邊欄 */}
       <aside className="hidden md:block fixed left-0 top-0 h-full w-64 bg-[#12121a] border-r border-[#2a2a3a] p-4">
         <div className="flex items-center gap-3 mb-8">
           <div className="h-3 w-3 bg-cyan-500 rounded-full animate-pulse shadow-lg shadow-cyan-500/50"></div>
-          <h1 className="text-lg tracking-wider text-cyan-400">MARKET MONITOR</h1>
+          <span className="text-cyan-400 tracking-wider">MONITOR</span>
         </div>
-        
-        <div className="space-y-4">
+
+        {/* 添加歷史數據按鈕 */}
+        <button 
+          onClick={() => window.location.href = '/history'}
+          className="w-full bg-cyan-900/20 rounded hover:bg-cyan-900/30 p-3 mb-8 flex items-center gap-2"
+        >
+          <span className="text-cyan-400">📊</span>
+          <span>View Historical Data</span>
+        </button>
+
+        <div className="space-y-6">
           <div className="p-3 bg-[#1a1a25] rounded-lg">
             <p className="text-xs text-gray-400 mb-1">
               CURRENT TIME
@@ -146,19 +190,25 @@ export default function Home() {
       </aside>
 
       {/* 主要內容區 */}
-      <main className="md:ml-64 p-2 md:p-6 mt-12 md:mt-0 min-h-screen">
-        <div className="pb-6">
+      <main className="md:ml-64">
+        {/* 內容容器 */}
+        <div className="p-4 pt-14 md:p-4">
+          {/* 桌面版標題 */}
+          <h1 className="hidden md:block text-2xl text-cyan-400 mb-4">Real-time Market Data</h1>
+
           {/* 頂部統計卡片 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4">
+            <StatCard
+              title="CURRENT PRICE"
+              value={`$${data[data.length - 1]?.price.toFixed(2) || '0.00'}`}
+            />
             <StatCard
               title="TOTAL VOLUME"
               value={formatVolume(stats.mean * data.length)}
-              trend={+5.2}
             />
             <StatCard
               title="MEAN VOLUME"
               value={formatVolume(stats.mean)}
-              trend={-2.1}
             />
             <StatCard
               title="STD DEVIATION"
@@ -347,9 +397,32 @@ export default function Home() {
               </div>
             </div>
             <div className="overflow-x-auto">
-              <DataTable data={data} anomalies={anomalies} />
+              <DataTable data={currentTransactions} anomalies={anomalies} />
             </div>
           </div>
+
+          {/* 分頁控制 */}
+          {data.length > itemsPerPage && (
+            <div className="flex justify-between items-center mt-4">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 bg-cyan-900/20 rounded hover:bg-cyan-900/30 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="text-gray-400">
+                Page {currentPage} of {Math.ceil(data.length / itemsPerPage)}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => p + 1)}
+                disabled={currentPage >= Math.ceil(data.length / itemsPerPage)}
+                className="px-4 py-2 bg-cyan-900/20 rounded hover:bg-cyan-900/30 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       </main>
     </div>

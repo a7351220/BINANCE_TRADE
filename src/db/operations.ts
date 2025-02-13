@@ -63,4 +63,59 @@ export async function getMarketData(options: QueryOptions) {
     askVolume: Number(row.ask_volume),
     netVolume: Number(row.net_volume)
   }));
+}
+
+export async function getHistoricalData(options: {
+  from?: Date;
+  to?: Date;
+  limit?: number;
+  offset?: number;
+}) {
+  try {
+    let query = `
+      SELECT 
+        time,
+        price,
+        bid_volume,
+        ask_volume,
+        net_volume
+      FROM market_data
+      WHERE 1=1
+    `;
+    
+    const params: any[] = [];
+    let paramCount = 1;
+    
+    if (options.from) {
+      query += ` AND time >= $${paramCount}`;
+      params.push(options.from);
+      paramCount++;
+    }
+    
+    if (options.to) {
+      query += ` AND time <= $${paramCount}`;
+      params.push(options.to);
+      paramCount++;
+    }
+    
+    query += ` ORDER BY time DESC`;
+    
+    if (options.limit) {
+      query += ` LIMIT $${paramCount}`;
+      params.push(options.limit);
+      paramCount++;
+    }
+
+    if (options.offset) {
+      query += ` OFFSET $${paramCount}`;
+      params.push(options.offset);
+    }
+
+    console.log('SQL Query:', query, 'Params:', params);
+    const result = await pool.query(query, params);
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching historical data:', error);
+    throw error;
+  }
 } 
